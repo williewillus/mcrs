@@ -13,8 +13,13 @@ fn main() -> anyhow::Result<()> {
     for stream in listener.incoming() {
         let stream = stream?;
         println!("Accepting connection to {:?}", stream.peer_addr());
-        let conn = Connection::new(stream);
-        thread::spawn(move || conn.process());
+        let mut conn = Connection::new(stream);
+        thread::spawn(move || {
+            match conn.process() {
+                Ok(()) => println!("stream disconnected successfully"),
+                Err(e) => eprintln!("error processing connection: {}", e)
+            }
+        });
     }
     Ok(())
 }

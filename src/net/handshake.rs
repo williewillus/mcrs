@@ -4,11 +4,11 @@ use crate::net::connection::State;
 use crate::net::packet::Packet;
 use crate::net::proto;
 
-struct Handshake {
-    proto_version: i32,
-    addr: String,
-    port: u16,
-    next_state: State,
+pub struct Handshake {
+    pub proto_version: i32,
+    pub addr: String,
+    pub port: u16,
+    pub next_state: State,
 }
 
 impl Packet for Handshake {
