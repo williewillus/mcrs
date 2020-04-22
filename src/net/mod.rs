@@ -1,4 +1,5 @@
 pub mod connection;
-pub mod handshake;
-pub mod packet;
+mod handshake;
+mod packet;
 pub mod proto;
+mod status;

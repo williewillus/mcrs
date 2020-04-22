@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
-use std::io::{Read, Write};
+use std::io::Read;
 use crate::net::connection::State;
-use crate::net::packet::Packet;
+use crate::net::packet::ServerboundPacket;
 use crate::net::proto;
 
 pub struct Handshake {
@@ -11,7 +11,15 @@ pub struct Handshake {
     pub next_state: State,
 }
 
-impl Packet for Handshake {
+impl ServerboundPacket for Handshake {
+    fn state() -> State {
+        State::Handshake
+    }
+
+    fn packet_id() -> i32 {
+        0
+    }
+
     fn read<R: Read>(mut r: R) -> Result<Self> {
         let proto_version = proto::read_varint(&mut r)?;
         let addr = proto::read(&mut r)?;
@@ -29,9 +37,5 @@ impl Packet for Handshake {
             port,
             next_state,
         })
-    }
-
-    fn write<W: Write>(&self, _: W) -> Result<()> {
-        unimplemented!("Handshake packet only needs to be readable")
     }
 }
