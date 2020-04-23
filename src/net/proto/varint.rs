@@ -11,8 +11,8 @@ impl ProtoSerializable for Varint {
 
         for i in 0..5 {
             r.read_exact(&mut buf)?;
-            let val = buf[0] & 0b01111111;
-            let has_more = buf[0] & 0b10000000 != 0;
+            let val = buf[0] & 0b0111_1111;
+            let has_more = buf[0] & 0b1000_0000 != 0;
             if i == 4 && has_more {
                 return Err(anyhow!("VarInt too long"));
             } else {
@@ -28,12 +28,12 @@ impl ProtoSerializable for Varint {
     fn write<W: Write>(&self, mut w: W) -> anyhow::Result<()> {
         let mut val = self.0 as u32; // so we get zero-extended shifts
         for _ in 0..5 {
-            let mut b = (val & 0b01111111) as u8;
-            val = val >> 7;
+            let mut b = (val & 0b0111_1111) as u8;
+            val >>= 7;
             let has_more = val != 0;
             b |= if has_more { 1 } else { 0 } << 7;
 
-            w.write_all(&mut [b])?;
+            w.write_all(&[b])?;
 
             if !has_more {
                 break;
