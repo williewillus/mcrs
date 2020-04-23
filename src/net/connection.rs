@@ -1,11 +1,14 @@
 use anyhow::{anyhow, Result};
+use log::{debug, warn, trace};
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use crate::net::handshake::Handshake;
+use crate::net::status;
+use crate::net::handshake;
 use crate::net::proto;
 use crate::net::packet::{ClientboundPacket, ServerboundPacket, RawPacket};
+use crate::types::text::Text;
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum State {
     Handshake,
     Status,
@@ -34,7 +37,7 @@ impl Connection {
         if len < 0 || len as usize > MAX_PACKET_BYTES {
             return Err(anyhow!("Packet size invalid"));
         }
-        let mut buf = Vec::with_capacity(len as usize);
+        let mut buf = vec![0; len as usize];
         self.stream.read_exact(&mut buf)?;
 
         let mut cursor = buf.as_slice();
@@ -42,7 +45,7 @@ impl Connection {
         let packet_id = proto::read_varint(&mut cursor)?;
 
         // Read the data itself. TODO: Try to eliminate extra allocation here? Can we just truncate then pass ownership of buf to rawpacket?
-        let data = buf.iter().copied().collect();
+        let data = cursor.iter().copied().collect();
 
         Ok(RawPacket {
             packet_id,
@@ -63,7 +66,7 @@ impl Connection {
         Ok(T::read(raw.data.as_slice())?)
     }
 
-    fn send_packet<T: ClientboundPacket>(&mut self, packet: T) -> Result<()> {
+    fn send_packet<T: ClientboundPacket>(&mut self, packet: &T) -> Result<()> {
         let mut buf = Vec::new();
         let id = T::packet_id();
         proto::write_varint(&mut buf, id)?;
@@ -75,12 +78,20 @@ impl Connection {
     }
 
     fn process_handshake(&mut self) -> Result<()> {
-        let handshake = self.read_expected_packet::<Handshake>()?;
-        if handshake.proto_version != 578 {
-            return Err(anyhow!("Only supports 1.15.2 protocol 578"));
+        let buf = &mut [0u8];
+        self.stream.peek(buf)?;
+        if buf[0] == 0xFE {
+            return Err(anyhow!("Disconnecting: currently not handling legacy server ping"));
+        }
+        let handshake = self.read_expected_packet::<handshake::Handshake>()?;
+        if handshake.proto_version != proto::PROTO_VERSION {
+            return Err(anyhow!("Only supports protocol {}", proto::PROTO_VERSION));
         }
         match handshake.next_state {
-            State::Status => self.state = State::Status,
+            State::Status => {
+                self.state = State::Status;
+                debug!("Switched to state {:?}", self.state);
+            },
             State::Login => unimplemented!(),
             _ => return Err(anyhow!("Invalid handshake state transition")),
         }
@@ -89,15 +100,53 @@ impl Connection {
     }
 
 
-    fn process_status(&mut self) -> Result<()> {
-        Ok(())
+    /// Read and process one Status state packet. Returns true when the server should disconnect.
+    fn process_status(&mut self) -> Result<bool> {
+        let raw = self.read_raw_packet()?;
+        let mut buf = raw.data.as_slice();
+
+        let should_disconnect = match raw.packet_id {
+            0 => {
+                trace!("Status request");
+                let _req = status::Request::read(&mut buf);
+
+                let version = status::VersionStatus::new(proto::PROTO_NAME.to_string(), proto::PROTO_VERSION);
+                let players = status::PlayerStatus::new(25, 0, Vec::new());
+                let description = Text { text: "mcrs server".to_string() };
+                let payload = status::StatusPayload::new(version, players, description, None);
+                let resp = status::Response::new(&payload);
+
+                self.send_packet(&resp)?;
+                false
+            },
+            1 => {
+                trace!("Status ping");
+                let ping = status::Ping::read(&mut buf)?;
+                let resp = status::Pong(ping.0);
+                self.send_packet(&resp)?;
+                true
+            },
+            _ => return Err(anyhow!("Unknown status packet {}", raw.packet_id)),
+        };
+
+        // read will update `buf` to point to the unread part, so we know if the packet didn't read everything
+        if !buf.is_empty() {
+            warn!("Status packet did not drain its payload");
+        }
+        trace!("Status success");
+        Ok(should_disconnect)
     }
 
     pub fn process(&mut self) -> Result<()> {
         loop {
             match self.state {
                 State::Handshake => self.process_handshake()?,
-                State::Status => self.process_status()?,
+                State::Status => {
+                    let should_disconnect = self.process_status()?;
+                    if should_disconnect {
+                        return Ok(())
+                    }
+                },
                 State::Login => unimplemented!(),
                 State::Play => unimplemented!(),
             }

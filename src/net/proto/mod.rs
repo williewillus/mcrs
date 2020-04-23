@@ -5,6 +5,9 @@ mod varint;
 use anyhow::Result;
 use std::io::{Read, Write};
 
+pub const PROTO_NAME: &str = "1.15.2";
+pub const PROTO_VERSION: i32 = 578;
+
 pub fn read<T, R>(mut r: R) -> Result<T>
 where T: ProtoSerializable,
       R: Read

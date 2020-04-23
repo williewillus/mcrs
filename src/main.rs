@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod net;
+mod types;
 
 use log::{info, error};
 use net::connection::Connection;
