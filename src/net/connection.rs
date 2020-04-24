@@ -4,7 +4,7 @@ use log::{debug, warn, trace};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
-use crate::net::{handshake, login, proto, status};
+use crate::net::{handshake, login, play, proto, status};
 use crate::net::packet::{ClientboundPacket, ServerboundPacket, RawPacket};
 use crate::server::Server;
 use crate::types::text::Text;

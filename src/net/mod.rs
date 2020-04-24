@@ -2,6 +2,7 @@ pub mod connection;
 mod handshake;
 mod login;
 mod packet;
+pub mod play;
 pub mod proto;
 mod status;
 

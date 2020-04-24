@@ -1,3 +1,4 @@
+use crate::net::play::{ClientboundPlayPacket, ServerboundPlayPacket};
 use crossbeam::crossbeam_channel::{Receiver, Sender};
 use std::sync::RwLock;
 use std::collections::HashMap;
@@ -5,10 +6,10 @@ use uuid::Uuid;
 
 struct PlayerConnection {
     /// Channel of inbound play packets from this player
-    inbound: Receiver<()>,
+    inbound: Receiver<ServerboundPlayPacket>,
 
     /// Channel of outbound play packets for this player
-    outbound: Sender<()>,
+    outbound: Sender<ClientboundPlayPacket>,
 }
 
 pub struct Server {
@@ -22,7 +23,7 @@ impl Server {
         }
     }
 
-    pub fn add_player(&self, uuid: Uuid, inbound: Receiver<()>, outbound: Sender<()>) {
+    pub fn add_player(&self, uuid: Uuid, inbound: Receiver<ServerboundPlayPacket>, outbound: Sender<ClientboundPlayPacket>) {
         let conn = PlayerConnection {
             inbound,
             outbound,
