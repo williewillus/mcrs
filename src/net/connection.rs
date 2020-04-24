@@ -1,9 +1,12 @@
 use anyhow::{anyhow, Result};
+use crossbeam::crossbeam_channel::{Receiver, Sender};
 use log::{debug, warn, trace};
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::sync::Arc;
 use crate::net::{handshake, login, proto, status};
 use crate::net::packet::{ClientboundPacket, ServerboundPacket, RawPacket};
+use crate::server::Server;
 use crate::types::text::Text;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -17,16 +20,19 @@ pub enum State {
 pub struct Connection {
     state: State,
     stream: TcpStream,
+    server: Arc<Server>,
+
 }
 
 /// The maximum declared size of a packet. Currently set to 2MiB to match vanilla
 const MAX_PACKET_BYTES: usize = 2 * 1024 * 1024;
 
 impl Connection {
-    pub fn new(stream: TcpStream) -> Self {
+    pub fn new(stream: TcpStream, server: Arc<Server>) -> Self {
         Self {
             state: State::Handshake,
             stream,
+            server,
         }
     }
 
@@ -140,8 +146,6 @@ impl Connection {
         let resp = login::LoginSuccess::new(uuid, login_start.name);
         self.send_packet(&resp)?;
         self.state = State::Play;
-        // todo: send message to server saying we are ready for it to start sending terrain
-        
         Ok(())
     }
 
