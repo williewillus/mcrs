@@ -4,7 +4,6 @@ use crate::net::connection::State;
 use crate::net::packet::ServerboundPacket;
 use crate::net::proto;
 
-#[derive(Debug)]
 pub struct Handshake {
     pub proto_version: i32,
     pub addr: String,

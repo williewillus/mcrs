@@ -1,15 +1,14 @@
 use anyhow::{anyhow, Result};
-use crossbeam::crossbeam_channel::{Receiver, Sender};
-use log::{debug, warn, trace};
+use crossbeam::channel::Sender;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
+use std::thread;
 use crate::net::{handshake, login, play, proto, status};
 use crate::net::packet::{ClientboundPacket, ServerboundPacket, RawPacket};
 use crate::server::Server;
 use crate::types::text::Text;
 
-#[derive(Debug, PartialEq, Eq)]
 pub enum State {
     Handshake,
     Status,
@@ -21,7 +20,7 @@ pub struct Connection {
     state: State,
     stream: TcpStream,
     server: Arc<Server>,
-
+    play_state: Option<PlayState>,
 }
 
 /// The maximum declared size of a packet. Currently set to 2MiB to match vanilla
@@ -33,6 +32,7 @@ impl Connection {
             state: State::Handshake,
             stream,
             server,
+            play_state: None,
         }
     }
 
@@ -63,7 +63,14 @@ impl Connection {
             return Err(anyhow!("Expected packet id {} but it was {}", T::ID, raw.packet_id));
         }
 
-        Ok(T::read(raw.data.as_slice())?)
+        let mut buf = raw.data.as_slice();
+        let t = T::read(&mut buf)?;
+        
+        if !buf.is_empty() {
+            log::warn!("read_expected_packet did not drain its payload");
+        }
+
+        Ok(t)
     }
 
     fn send_packet<T: ClientboundPacket>(&mut self, packet: &T) -> Result<()> {
@@ -87,12 +94,17 @@ impl Connection {
             return Err(anyhow!("Only supports protocol {}", proto::PROTO_VERSION));
         }
         match handshake.next_state {
-            State::Status => self.state = State::Status,
-            State::Login => self.state = State::Login,
+            State::Status => {
+                log::trace!("Switched to status state");
+                self.state = State::Status;
+            },
+            State::Login => {
+                log::trace!("Switched to login state");
+                self.state = State::Login;
+            }
             _ => return Err(anyhow!("Invalid handshake state transition")),
         }
 
-        debug!("Switched to state {:?}", self.state);
         Ok(())
     }
 
@@ -104,7 +116,7 @@ impl Connection {
 
         let should_disconnect = match raw.packet_id {
             0 => {
-                trace!("Status request");
+                log::trace!("Status request");
                 let _req = status::Request::read(&mut buf);
 
                 let version = status::VersionStatus::new(proto::PROTO_NAME.to_string(), proto::PROTO_VERSION);
@@ -117,7 +129,7 @@ impl Connection {
                 false
             },
             1 => {
-                trace!("Status ping");
+                log::trace!("Status ping");
                 let ping = status::Ping::read(&mut buf)?;
                 let resp = status::Pong(ping.0);
                 self.send_packet(&resp)?;
@@ -128,25 +140,51 @@ impl Connection {
 
         // read will update `buf` to point to the unread part, so we know if the packet didn't read everything
         if !buf.is_empty() {
-            warn!("Status packet did not drain its payload");
+            log::warn!("Status packet did not drain its payload");
         }
-        trace!("Status success");
+        log::trace!("Status success");
         Ok(should_disconnect)
     }
 
     fn process_login(&mut self) -> Result<()> {
         let login_start = self.read_expected_packet::<login::LoginStart>()?;
-        trace!("login start from username {}", login_start.name);
+        log::trace!("login start from username {}", login_start.name);
+
         let uuid = uuid::Uuid::new_v4();
-        let resp = login::LoginSuccess::new(uuid, login_start.name);
+        let resp = login::LoginSuccess::new(uuid, login_start.name.clone());
         self.send_packet(&resp)?;
+
+        let (inbound_sender, inbound_receiver) = crossbeam::channel::unbounded();
+        let (outbound_sender, outbound_receiver) = crossbeam::channel::unbounded();
+
+        self.server.add_player(uuid, inbound_receiver, outbound_sender);
+
+        let socket_clone = self.stream.try_clone()?;
+        let outbound_handle = thread::Builder::new()
+            .name(format!("outbound network to {}", login_start.name))
+            .spawn(move || {
+                for item in outbound_receiver {
+                    // todo write the packet to network
+                }
+            })?;
+
+        self.play_state = Some(PlayState {
+            outbound: outbound_handle,
+            inbound: inbound_sender,
+        });
+        log::trace!("switched to play state");
         self.state = State::Play;
+        
         Ok(())
     }
 
-    /// Process packets during ordinary play. At this time, the main server thread has taken over all logic duties,
-    /// and this loop should simply be draining the send queue and forwarding messages to the server message queue
+    /// Process packets during ordinary play. At this time, the main server thread has taken over all logic duties.
+    /// A separate thread has been spawned to flush the outbound queue. The sole responsibility of this method now is to read inbound messages
+    /// and hand them to the server.
     fn process_play(&mut self) -> Result<()> {
+        let play_state = self.play_state.as_ref().unwrap();
+        let raw = self.read_raw_packet()?;
+        // todo parse into packet and send to server thread
         Ok(())
     }
 
@@ -165,4 +203,12 @@ impl Connection {
             }
         }
     }
+}
+
+pub struct PlayState {
+    /// Handle to the outbound thread
+    outbound: thread::JoinHandle<()>,
+
+    /// Queue to transfer packets to the server thread
+    inbound: Sender<play::ServerboundPlayPacket>,
 }
