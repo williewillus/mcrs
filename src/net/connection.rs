@@ -58,10 +58,6 @@ impl Connection {
     }
 
     fn read_expected_packet<T: ServerboundPacket>(&mut self) -> Result<T> {
-        if self.state != T::state() {
-            return Err(anyhow!("Invalid state to receive packet {}", std::any::type_name::<T>()));
-        }
-        
         let raw = self.read_raw_packet()?;
         if raw.packet_id != T::ID {
             return Err(anyhow!("Expected packet id {} but it was {}", T::ID, raw.packet_id));

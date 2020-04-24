@@ -15,10 +15,6 @@ pub struct Handshake {
 impl ServerboundPacket for Handshake {
     const ID: i32 = 0;
     
-    fn state() -> State {
-        State::Handshake
-    }
-
     fn read<R: Read>(mut r: R) -> Result<Self> {
         let proto_version = proto::read_varint(&mut r)?;
         let addr = proto::read(&mut r)?;

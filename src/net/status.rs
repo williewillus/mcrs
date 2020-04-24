@@ -1,5 +1,4 @@
 use anyhow::Result;
-use crate::net::connection::State;
 use crate::net::packet::{ClientboundPacket, ServerboundPacket};
 use crate::net::proto::{self, ProtoSerializable};
 use crate::types::text::Text;
@@ -11,10 +10,6 @@ pub struct Request;
 impl ServerboundPacket for Request {
     const ID: i32 = 0;
     
-    fn state() -> State {
-        State::Status
-    }
-
     fn read<R: Read>(_: R) -> Result<Self> {
         Ok(Self)
     }
@@ -108,10 +103,6 @@ impl Response {
 impl ClientboundPacket for Response {
     const ID: i32 = 0;
     
-    fn state() -> State {
-        State::Status
-    }
-
     fn write<W: Write>(&self, mut w: W) -> Result<()> {
         self.payload.write(&mut w)
     }
@@ -122,10 +113,6 @@ pub struct Ping(pub i64);
 impl ServerboundPacket for Ping {
     const ID: i32 = 1;
     
-    fn state() -> State {
-        State::Status
-    }
-
     fn read<R: Read>(mut r: R) -> Result<Self> {
         let v = proto::read::<i64, _>(&mut r)?;
         Ok(Ping(v))
@@ -137,10 +124,6 @@ pub struct Pong(pub i64);
 impl ClientboundPacket for Pong {
     const ID: i32 = 1;
     
-    fn state() -> State {
-        State::Status
-    }
-
     fn write<W: Write>(&self, mut w: W) -> Result<()> {
         self.0.write(&mut w)
     }
