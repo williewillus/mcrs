@@ -11,12 +11,10 @@ pub struct LoginStart {
 }
 
 impl ServerboundPacket for LoginStart {
+    const ID: i32 = 0;
+    
     fn state() -> State {
         State::Login
-    }
-
-    fn packet_id() -> i32 {
-        0
     }
 
     fn read<R: Read>(mut r: R) -> Result<Self> {
@@ -32,12 +30,10 @@ pub struct Disconnect {
 }
 
 impl ClientboundPacket for Disconnect {
+    const ID: i32 = 0;
+    
     fn state() -> State {
         State::Login
-    }
-
-    fn packet_id() -> i32 {
-        0
     }
 
     fn write<W: Write>(&self, mut w: W) -> Result<()> {
@@ -63,12 +59,10 @@ impl LoginSuccess {
 }
 
 impl ClientboundPacket for LoginSuccess {
+    const ID: i32 = 2;
+    
     fn state() -> State {
         State::Login
-    }
-
-    fn packet_id() -> i32 {
-        2
     }
 
     fn write<W: Write>(&self, mut w: W) -> Result<()> {

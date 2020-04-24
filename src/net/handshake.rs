@@ -13,12 +13,10 @@ pub struct Handshake {
 }
 
 impl ServerboundPacket for Handshake {
+    const ID: i32 = 0;
+    
     fn state() -> State {
         State::Handshake
-    }
-
-    fn packet_id() -> i32 {
-        0
     }
 
     fn read<R: Read>(mut r: R) -> Result<Self> {

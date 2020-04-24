@@ -9,12 +9,10 @@ use std::io::{Read, Write};
 pub struct Request;
 
 impl ServerboundPacket for Request {
+    const ID: i32 = 0;
+    
     fn state() -> State {
         State::Status
-    }
-
-    fn packet_id() -> i32 {
-        0
     }
 
     fn read<R: Read>(_: R) -> Result<Self> {
@@ -108,14 +106,12 @@ impl Response {
 }
 
 impl ClientboundPacket for Response {
+    const ID: i32 = 0;
+    
     fn state() -> State {
         State::Status
     }
 
-    fn packet_id() -> i32 {
-        0
-    }
-    
     fn write<W: Write>(&self, mut w: W) -> Result<()> {
         self.payload.write(&mut w)
     }
@@ -124,32 +120,27 @@ impl ClientboundPacket for Response {
 pub struct Ping(pub i64);
 
 impl ServerboundPacket for Ping {
+    const ID: i32 = 1;
+    
     fn state() -> State {
         State::Status
     }
 
-    fn packet_id() -> i32 {
-        1
-    }
-    
     fn read<R: Read>(mut r: R) -> Result<Self> {
         let v = proto::read::<i64, _>(&mut r)?;
         Ok(Ping(v))
     }
-
 }
 
 pub struct Pong(pub i64);
 
 impl ClientboundPacket for Pong {
+    const ID: i32 = 1;
+    
     fn state() -> State {
         State::Status
     }
 
-    fn packet_id() -> i32 {
-        1
-    }
-    
     fn write<W: Write>(&self, mut w: W) -> Result<()> {
         self.0.write(&mut w)
     }

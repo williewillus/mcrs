@@ -63,8 +63,8 @@ impl Connection {
         }
         
         let raw = self.read_raw_packet()?;
-        if raw.packet_id != T::packet_id() {
-            return Err(anyhow!("Expected packet id {} but it was {}", T::packet_id(), raw.packet_id));
+        if raw.packet_id != T::ID {
+            return Err(anyhow!("Expected packet id {} but it was {}", T::ID, raw.packet_id));
         }
 
         Ok(T::read(raw.data.as_slice())?)
@@ -72,8 +72,7 @@ impl Connection {
 
     fn send_packet<T: ClientboundPacket>(&mut self, packet: &T) -> Result<()> {
         let mut buf = Vec::new();
-        let id = T::packet_id();
-        proto::write_varint(&mut buf, id)?;
+        proto::write_varint(&mut buf, T::ID)?;
         packet.write(&mut buf)?;
 
         let len = buf.len() as i32;
