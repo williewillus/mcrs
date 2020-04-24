@@ -2,9 +2,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, warn, trace};
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use crate::net::status;
-use crate::net::handshake;
-use crate::net::proto;
+use crate::net::{handshake, login, proto, status};
 use crate::net::packet::{ClientboundPacket, ServerboundPacket, RawPacket};
 use crate::types::text::Text;
 
@@ -88,14 +86,12 @@ impl Connection {
             return Err(anyhow!("Only supports protocol {}", proto::PROTO_VERSION));
         }
         match handshake.next_state {
-            State::Status => {
-                self.state = State::Status;
-                debug!("Switched to state {:?}", self.state);
-            },
-            State::Login => unimplemented!(),
+            State::Status => self.state = State::Status,
+            State::Login => self.state = State::Login,
             _ => return Err(anyhow!("Invalid handshake state transition")),
         }
 
+        debug!("Switched to state {:?}", self.state);
         Ok(())
     }
 
@@ -137,6 +133,24 @@ impl Connection {
         Ok(should_disconnect)
     }
 
+    fn process_login(&mut self) -> Result<()> {
+        let login_start = self.read_expected_packet::<login::LoginStart>()?;
+        trace!("login start from username {}", login_start.name);
+        let uuid = uuid::Uuid::new_v4();
+        let resp = login::LoginSuccess::new(uuid, login_start.name);
+        self.send_packet(&resp)?;
+        self.state = State::Play;
+        // todo: send message to server saying we are ready for it to start sending terrain
+        
+        Ok(())
+    }
+
+    /// Process packets during ordinary play. At this time, the main server thread has taken over all logic duties,
+    /// and this loop should simply be draining the send queue and forwarding messages to the server message queue
+    fn process_play(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     pub fn process(&mut self) -> Result<()> {
         loop {
             match self.state {
@@ -147,8 +161,8 @@ impl Connection {
                         return Ok(())
                     }
                 },
-                State::Login => unimplemented!(),
-                State::Play => unimplemented!(),
+                State::Login => self.process_login()?,
+                State::Play => self.process_play()?,
             }
         }
     }
