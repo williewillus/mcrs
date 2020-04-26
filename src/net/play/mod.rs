@@ -1,7 +1,56 @@
-pub enum ServerboundPlayPacket {
+pub mod clientbound {
+}
 
+pub enum ServerboundPlayPacket {
+    TeleportConfirm,
+    QueryBlockNbt,
+    SetDifficulty,
+    ChatMessage,
+    ClientStatus,
+    ClientSettings,
+    TabComplete,
+    WindowConfirm,
+    ClickWindowButton,
+    ClickWindow,
+    CloseWindow,
+    PluginMessage,
+    EditBook,
+    EntityNbtRequest,
+    InteractEntity,
+    KeepAlive,
+    LockDifficulty,
+    PlayerPosition,
+    PlayerPositionRotation,
+    PlayerRotation,
+    PlayerMovement,
+    VehicleMove,
+    SteerBoat,
+    PickItem,
+    CraftRecipe,
+    PlayerAbilities,
+    PlayerDigging,
+    EntityAction,
+    SteerVechicle,
+    RecipeBookData,
+    NameItem,
+    ResourcePackStatus,
+    AdvancementTab,
+    SelectTrade,
+    SetBeaconEffect,
+    HeldItemChange,
+    UpdateCommandBlock,
+    UpdateCommandCart,
+    CreativeInventoryAction,
+    UpdateJigsawBlock,
+    UpdateStructureBlock,
+    UpdateSign,
+    Animation,
+    Spectate,
+    BlockPlace,
+    UseItem,
 }
 
 pub enum ClientboundPlayPacket {
+    
     
 }

@@ -1,11 +1,11 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use std::io::{Read, Write};
 use crate::net::proto::ProtoSerializable;
 
 pub struct Varint(pub i32);
 
 impl ProtoSerializable for Varint {
-    fn read<R: Read>(mut r: R) -> anyhow::Result<Self> {
+    fn read<R: Read>(mut r: R) -> Result<Self> {
         let mut buf = [0u8];
         let mut result = 0i32;
 
@@ -25,7 +25,7 @@ impl ProtoSerializable for Varint {
         Ok(Varint(result))
     }
 
-    fn write<W: Write>(&self, mut w: W) -> anyhow::Result<()> {
+    fn write<W: Write>(&self, mut w: W) -> Result<()> {
         let mut val = self.0 as u32; // so we get zero-extended shifts
         for _ in 0..5 {
             let mut b = (val & 0b0111_1111) as u8;

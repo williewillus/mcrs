@@ -1,3 +1,6 @@
+#[macro_use]
+mod macros;
+
 pub mod connection;
 mod handshake;
 mod login;
@@ -33,7 +36,7 @@ fn accept_loop(server: Arc<Server>)  {
 }
 
 /// Spawns the accept loop thread and returns a handle to it
-pub fn spawn_accept_loop(server: Arc<Server>) -> std::io::Result<std::thread::JoinHandle<()>> {
+pub fn spawn_accept_loop(server: Arc<Server>) -> std::io::Result<thread::JoinHandle<()>> {
     thread::Builder::new()
         .name("accept loop".to_owned())
         .spawn(move || accept_loop(server))

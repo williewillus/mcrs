@@ -1,11 +1,12 @@
 use anyhow::{anyhow, Result};
 use crossbeam::channel::Sender;
-use std::io::{Read, Write};
+use std::convert::TryInto;
+use std::io::Read;
 use std::net::TcpStream;
 use std::sync::Arc;
 use std::thread;
 use crate::net::{handshake, login, play, proto, status};
-use crate::net::packet::{ClientboundPacket, ServerboundPacket, RawPacket};
+use crate::net::packet::RawPacket;
 use crate::server::Server;
 use crate::types::text::Text;
 
@@ -57,39 +58,18 @@ impl Connection {
         })
     }
 
-    fn read_expected_packet<T: ServerboundPacket>(&mut self) -> Result<T> {
-        let raw = self.read_raw_packet()?;
-        if raw.packet_id != T::ID {
-            return Err(anyhow!("Expected packet id {} but it was {}", T::ID, raw.packet_id));
-        }
-
-        let mut buf = raw.data.as_slice();
-        let t = T::read(&mut buf)?;
-        
-        if !buf.is_empty() {
-            log::warn!("read_expected_packet did not drain its payload");
-        }
-
-        Ok(t)
-    }
-
-    fn send_packet<T: ClientboundPacket>(&mut self, packet: &T) -> Result<()> {
-        let mut buf = Vec::new();
-        proto::write_varint(&mut buf, T::ID)?;
-        packet.write(&mut buf)?;
-
-        let len = buf.len() as i32;
-        proto::write_varint(&mut self.stream, len)?;
-        Ok(self.stream.write_all(buf.as_slice())?)
-    }
-
     fn process_handshake(&mut self) -> Result<()> {
         let buf = &mut [0u8];
         self.stream.peek(buf)?;
         if buf[0] == 0xFE {
             return Err(anyhow!("Disconnecting: currently not handling legacy server ping"));
         }
-        let handshake = self.read_expected_packet::<handshake::Handshake>()?;
+        let raw = self.read_raw_packet()?;
+        if raw.packet_id != 0 {
+            return Err(anyhow!("Unknown handshake packet id {}", raw.packet_id));
+        }
+
+        let handshake = handshake::Handshake::read(&mut raw.data.as_slice())?;
         if handshake.proto_version != proto::PROTO_VERSION {
             return Err(anyhow!("Only supports protocol {}", proto::PROTO_VERSION));
         }
@@ -111,71 +91,74 @@ impl Connection {
 
     /// Read and process one Status state packet. Returns true when the server should disconnect.
     fn process_status(&mut self) -> Result<bool> {
+        use status::serverbound::Packet as SPacket;
+        use status::clientbound::{Packet as CPacket, Pong, Response};
+
         let raw = self.read_raw_packet()?;
-        let mut buf = raw.data.as_slice();
+        let pkt = raw.try_into()?;
 
-        let should_disconnect = match raw.packet_id {
-            0 => {
+        let should_disconnect = match pkt {
+            SPacket::Request(payload) => {
                 log::trace!("Status request");
-                let _req = status::Request::read(&mut buf);
-
                 let version = status::VersionStatus::new(proto::PROTO_NAME.to_string(), proto::PROTO_VERSION);
                 let players = status::PlayerStatus::new(25, 0, Vec::new());
                 let description = Text { text: "mcrs server".to_string() };
-                let payload = status::StatusPayload::new(version, players, description, None);
-                let resp = status::Response::new(&payload);
-
-                self.send_packet(&resp)?;
+                let status = status::StatusPayload::new(version, players, description, None);
+                let resp = CPacket::Response(Response { status });
+                resp.write(&mut self.stream)?;
                 false
             },
-            1 => {
+            SPacket::Ping(payload) => {
                 log::trace!("Status ping");
-                let ping = status::Ping::read(&mut buf)?;
-                let resp = status::Pong(ping.0);
-                self.send_packet(&resp)?;
+                let resp = CPacket::Pong(Pong { val: payload.val });
+                resp.write(&mut self.stream)?;
                 true
             },
-            _ => return Err(anyhow!("Unknown status packet {}", raw.packet_id)),
         };
 
-        // read will update `buf` to point to the unread part, so we know if the packet didn't read everything
-        if !buf.is_empty() {
-            log::warn!("Status packet did not drain its payload");
-        }
         log::trace!("Status success");
         Ok(should_disconnect)
     }
 
     fn process_login(&mut self) -> Result<()> {
-        let login_start = self.read_expected_packet::<login::LoginStart>()?;
-        log::trace!("login start from username {}", login_start.name);
+        use login::serverbound::Packet as SPacket;
+        use login::clientbound::{Packet as CPacket, LoginSuccess};
 
-        let uuid = uuid::Uuid::new_v4();
-        let resp = login::LoginSuccess::new(uuid, login_start.name.clone());
-        self.send_packet(&resp)?;
+        let raw_pkt = self.read_raw_packet()?;
+        let pkt = raw_pkt.try_into()?;
+        match pkt {
+            SPacket::LoginStart(payload) => {
+                log::trace!("login start from username {}", payload.name);
+                let thread_name = format!("outbound network to {}", payload.name);
 
-        let (inbound_sender, inbound_receiver) = crossbeam::channel::unbounded();
-        let (outbound_sender, outbound_receiver) = crossbeam::channel::unbounded();
+                let uuid = uuid::Uuid::new_v4();
+                let resp = CPacket::LoginSuccess(LoginSuccess { uuid, name: payload.name });
+                resp.write(&mut self.stream)?;
 
-        self.server.add_player(uuid, inbound_receiver, outbound_sender);
+                let (inbound_sender, inbound_receiver) = crossbeam::channel::unbounded();
+                let (outbound_sender, outbound_receiver) = crossbeam::channel::unbounded();
 
-        let socket_clone = self.stream.try_clone()?;
-        let outbound_handle = thread::Builder::new()
-            .name(format!("outbound network to {}", login_start.name))
-            .spawn(move || {
-                for item in outbound_receiver {
-                    // todo write the packet to network
-                }
-            })?;
+                self.server.add_player(uuid, inbound_receiver, outbound_sender);
 
-        self.play_state = Some(PlayState {
-            outbound: outbound_handle,
-            inbound: inbound_sender,
-        });
-        log::trace!("switched to play state");
-        self.state = State::Play;
+                let socket_clone = self.stream.try_clone()?;
+                let outbound_handle = thread::Builder::new()
+                    .name(thread_name)
+                    .spawn(move || {
+                        for item in outbound_receiver {
+                            // todo write the packet to network
+                        }
+                    })?;
+
+                self.play_state = Some(PlayState {
+                    outbound: outbound_handle,
+                    inbound: inbound_sender,
+                });
+                log::trace!("switched to play state");
+                self.state = State::Play;
+                Ok(())
+            },
+        }
         
-        Ok(())
     }
 
     /// Process packets during ordinary play. At this time, the main server thread has taken over all logic duties.

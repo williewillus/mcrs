@@ -1,21 +1,7 @@
-use anyhow::Result;
-use crate::net::packet::{ClientboundPacket, ServerboundPacket};
-use crate::net::proto::{self, ProtoSerializable};
 use crate::types::text::Text;
-use serde::Serialize;
-use std::io::{Read, Write};
+use serde::{Deserialize, Serialize};
 
-pub struct Request;
-
-impl ServerboundPacket for Request {
-    const ID: i32 = 0;
-    
-    fn read<R: Read>(_: R) -> Result<Self> {
-        Ok(Self)
-    }
-}
-
-#[derive(Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct VersionStatus {
     /// String name of the current version, e.g. "1.15.2"
     name: String,
@@ -32,7 +18,7 @@ impl VersionStatus {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct PlayerSample {
     name: String,
     /// Uuid of the player
@@ -48,7 +34,7 @@ impl PlayerSample {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct PlayerStatus {
     max: u32,
     online: u32,
@@ -65,7 +51,7 @@ impl PlayerStatus {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct StatusPayload {
     version: VersionStatus,
     players: PlayerStatus,
@@ -86,45 +72,36 @@ impl StatusPayload {
     }
 }
 
-pub struct Response {
-    /// JSON Encoded status payload
-    payload: String,
-}
-
-impl Response {
-    pub fn new(status: &StatusPayload) -> Self {
-        let payload = serde_json::to_string(status).unwrap(); // FIXME: This unwrap should be okay, but recheck
-        Self {
-            payload
-        }
+pub mod serverbound {
+    packets! {
+        0 => Request {},
+        1 => Ping { val: i64 }
     }
 }
 
-impl ClientboundPacket for Response {
-    const ID: i32 = 0;
+pub mod clientbound {
+    use super::StatusPayload;
     
-    fn write<W: Write>(&self, mut w: W) -> Result<()> {
-        self.payload.write(&mut w)
-    }
-}
+    packets! {
+        0 => Response { status: StatusPayload;
+                        impl ProtoSerializable for Response {
+                            fn read<R: Read>(mut r: R) -> Result<Self>
+                                where Self: Sized
+                            {
+                                let s: String = proto::read(&mut r)?;
+                                let status = serde_json::from_str(&s)?;
+                                Ok(Self {
+                                    status
+                                })
+                            }
 
-pub struct Ping(pub i64);
-
-impl ServerboundPacket for Ping {
-    const ID: i32 = 1;
-    
-    fn read<R: Read>(mut r: R) -> Result<Self> {
-        let v = proto::read::<i64, _>(&mut r)?;
-        Ok(Ping(v))
-    }
-}
-
-pub struct Pong(pub i64);
-
-impl ClientboundPacket for Pong {
-    const ID: i32 = 1;
-    
-    fn write<W: Write>(&self, mut w: W) -> Result<()> {
-        self.0.write(&mut w)
+                            fn write<W: Write>(&self, mut w: W) -> Result<()> {
+                                let s = serde_json::to_string(&self.status)?;
+                                s.write(&mut w)
+                            }
+                        }
+                        
+        },
+        1 => Pong { val: i64 }
     }
 }

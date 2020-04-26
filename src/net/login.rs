@@ -1,60 +1,29 @@
-use anyhow::Result;
-use crate::net::packet::{ClientboundPacket, ServerboundPacket};
-use crate::net::proto::{self, ProtoSerializable};
-use crate::types::text::Text;
-use std::io::{Read, Write};
-use uuid::Uuid;
-
-pub struct LoginStart {
-    pub name: String
-}
-
-impl ServerboundPacket for LoginStart {
-    const ID: i32 = 0;
-    
-    fn read<R: Read>(mut r: R) -> Result<Self> {
-        let name = proto::read::<String, _>(&mut r)?;
-        Ok(Self {
-            name
-        })
+pub mod serverbound {
+    packets! {
+        0 => LoginStart { name: String }
     }
 }
 
-pub struct Disconnect {
-    pub reason: Text,
-}
-
-impl ClientboundPacket for Disconnect {
-    const ID: i32 = 0;
+pub mod clientbound {
+    use std::str::FromStr;
     
-    fn write<W: Write>(&self, mut w: W) -> Result<()> {
-        let json = serde_json::to_string(&self.reason)?;
-        json.write(&mut w)?;
-        Ok(())
-    }
+    packets! {
+        0 => Disconnect { reason: crate::types::text::Text },
+        2 => LoginSuccess { uuid: uuid::Uuid, name: String;
+                            impl ProtoSerializable for LoginSuccess {
+                                fn read<R: Read>(mut r: R) -> Result<Self> {
+                                    let us = proto::read::<String, _>(&mut r)?;
+                                    let uuid = uuid::Uuid::from_str(&us)?;
+                                    let name = proto::read(&mut r)?;
+                                    Ok(Self { uuid, name })
+                                }
 
-}
-
-pub struct LoginSuccess {
-    pub uuid: Uuid,
-    pub username: String,
-}
-
-impl LoginSuccess {
-    pub fn new(uuid: Uuid, username: String) -> Self {
-        Self {
-            uuid,
-            username,
+                                fn write<W: Write>(&self, mut w: W) -> Result<()> {
+                                    self.uuid.to_string().write(&mut w)?;
+                                    self.name.write(&mut w)?;
+                                    Ok(())
+                                }
+                            }
         }
-    }
-}
-
-impl ClientboundPacket for LoginSuccess {
-    const ID: i32 = 2;
-    
-    fn write<W: Write>(&self, mut w: W) -> Result<()> {
-        self.uuid.to_string().write(&mut w)?;
-        self.username.write(&mut w)?;
-        Ok(())
     }
 }

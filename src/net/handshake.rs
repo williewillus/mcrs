@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::io::Read;
 use crate::net::connection::State;
-use crate::net::packet::ServerboundPacket;
 use crate::net::proto;
 
 pub struct Handshake {
@@ -11,10 +10,8 @@ pub struct Handshake {
     pub next_state: State,
 }
 
-impl ServerboundPacket for Handshake {
-    const ID: i32 = 0;
-    
-    fn read<R: Read>(mut r: R) -> Result<Self> {
+impl Handshake {
+    pub fn read<R: Read>(mut r: R) -> Result<Self> {
         let proto_version = proto::read_varint(&mut r)?;
         let addr = proto::read(&mut r)?;
         let port = proto::read(&mut r)?;
