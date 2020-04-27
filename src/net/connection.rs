@@ -193,5 +193,5 @@ pub struct PlayState {
     outbound: thread::JoinHandle<()>,
 
     /// Queue to transfer packets to the server thread
-    inbound: Sender<play::ServerboundPlayPacket>,
+    inbound: Sender<play::serverbound::Packet>,
 }

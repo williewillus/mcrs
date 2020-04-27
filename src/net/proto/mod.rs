@@ -1,6 +1,6 @@
 //! This module and its children contain `ProtoSerializable`, representing anything that can be written
 //! and read from the network in a general manner, as well as impls for common types.
-mod ints;
+mod scalars;
 mod string;
 mod varint;
 
