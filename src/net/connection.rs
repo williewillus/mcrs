@@ -140,12 +140,16 @@ impl Connection {
 
                 self.server.add_player(uuid, inbound_receiver, outbound_sender);
 
-                let socket_clone = self.stream.try_clone()?;
+                let mut socket_clone = self.stream.try_clone()?;
                 let outbound_handle = thread::Builder::new()
                     .name(thread_name)
                     .spawn(move || {
                         for item in outbound_receiver {
-                            // todo write the packet to network
+                            let res = item.write(&mut socket_clone);
+                            if let Err(e) = res {
+                                log::error!("Outbound thread errored: {}", e);
+                                break;
+                            }
                         }
                     })?;
 
@@ -165,9 +169,12 @@ impl Connection {
     /// A separate thread has been spawned to flush the outbound queue. The sole responsibility of this method now is to read inbound messages
     /// and hand them to the server.
     fn process_play(&mut self) -> Result<()> {
-        let play_state = self.play_state.as_ref().unwrap();
         let raw = self.read_raw_packet()?;
-        // todo parse into packet and send to server thread
+        let play_state = self.play_state.as_ref().unwrap();
+        match raw.try_into() {
+            Ok(pkt) => play_state.inbound.send(pkt)?,
+            Err(e) => log::error!("Error parsing play packet, ignoring: {}", e),
+        }
         Ok(())
     }
 
