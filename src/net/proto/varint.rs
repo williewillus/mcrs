@@ -2,7 +2,14 @@ use anyhow::{anyhow, Result};
 use std::io::{Read, Write};
 use crate::net::proto::ProtoSerializable;
 
+#[derive(Debug)]
 pub struct Varint(pub i32);
+
+impl From<i32> for Varint {
+    fn from(v: i32) -> Self {
+        Self(v)
+    }
+}
 
 impl ProtoSerializable for Varint {
     fn read<R: Read>(mut r: R) -> Result<Self> {

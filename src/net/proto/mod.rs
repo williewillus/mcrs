@@ -2,7 +2,7 @@
 //! and read from the network in a general manner, as well as impls for common types.
 mod scalars;
 mod string;
-mod varint;
+pub mod varint;
 
 use anyhow::Result;
 use std::io::{Read, Write};

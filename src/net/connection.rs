@@ -145,8 +145,7 @@ impl Connection {
                     .name(thread_name)
                     .spawn(move || {
                         for item in outbound_receiver {
-                            let res = item.write(&mut socket_clone);
-                            if let Err(e) = res {
+                            if let Err(e) = item.write(&mut socket_clone) {
                                 log::error!("Outbound thread errored: {}", e);
                                 break;
                             }

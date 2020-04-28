@@ -60,13 +60,16 @@ macro_rules! packets {
         use $crate::net::proto::{self, ProtoSerializable};
         use $crate::net::packet::RawPacket;
         
+        // First, generate structs for each packet
+        
         $( packet_struct!($name { $($payload)* }); )*
 
-
+        // Next, generate an enum tying all packets of this classification together
         pub enum Packet {
             $($name($name)),+
         }
 
+        /// Attempts to parse one of the packet types from a raw packet
         impl TryFrom<RawPacket> for Packet {
             type Error = ::anyhow::Error;
             
@@ -74,11 +77,20 @@ macro_rules! packets {
                 let mut payload = pkt.data.as_slice();
                 let res = match pkt.packet_id {
                     $($id => { Packet::$name($name::read(&mut payload)?) }),+
-                    i @ _ => return Err(::anyhow::anyhow!("Unknown packet discriminator {}", i))
+                    i @ _ => return Err(::anyhow::anyhow!("Unknown packet discriminator {:x}", i))
                 };
                 Ok(res)
             }
         }
+
+        // Utility implementation for easy outbound conversion
+        $(
+        impl From<$name> for Packet {
+            fn from(inner: $name) -> Self {
+                Packet::$name(inner)
+            }
+        }
+        )*
 
         impl Packet {
             pub fn write<W: Write>(&self, mut w: W) -> Result<()> {

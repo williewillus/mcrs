@@ -1,9 +1,13 @@
 pub mod clientbound {
+    use crate::net::proto::varint::Varint;
     use crate::types::text::Text;
     
     packets! {
         0x1B => Disconnect { reason: Text },
-        0x21 => KeepAlive { value: i64 }
+        0x21 => KeepAlive { value: i64 },
+        0x26 => JoinGame { entity_id: i32, gamemode: u8, dimension: i32, hashed_seed: i64, max_players: u8, level_type: String,
+                           view_dist: Varint, reduced_debug: bool, respawn_screen: bool },
+        0x41 => UpdateViewPosition { x: Varint, z: Varint }
     }
 }
 
